@@ -53,6 +53,7 @@ func handleRequests() func(w http.ResponseWriter, r *http.Request) {
 		serviceName, serviceTimeout, err := parseParams(r)
 		if err != nil {
 			fmt.Fprintf(w, "%+v", err)
+			return
 		}
 		service := GetOrCreateService(serviceName, serviceTimeout)
 		status, err := service.HandleServiceState(cli)
@@ -65,7 +66,7 @@ func handleRequests() func(w http.ResponseWriter, r *http.Request) {
 }
 
 func getParam(queryParams url.Values, paramName string) (string, error) {
-	if queryParams[paramName] == nil {
+	if queryParams[paramName] == nil || len(queryParams[paramName][0]) == 0 {
 		return "", fmt.Errorf("%s is required", paramName)
 	}
 	return queryParams[paramName][0], nil
@@ -76,12 +77,12 @@ func parseParams(r *http.Request) (string, uint64, error) {
 
 	serviceName, err := getParam(queryParams, "name")
 	if err != nil {
-		return "", 0, nil
+		return "", 0, err
 	}
 
 	timeoutString, err := getParam(queryParams, "timeout")
 	if err != nil {
-		return "", 0, nil
+		return "", 0, err
 	}
 	serviceTimeout, err := strconv.Atoi(timeoutString)
 	if err != nil {
@@ -93,6 +94,7 @@ func parseParams(r *http.Request) (string, uint64, error) {
 // GetOrCreateService return an existing service or create one
 func GetOrCreateService(name string, timeout uint64) *Service {
 	if services[name] != nil {
+		services[name].timeout = timeout
 		return services[name]
 	}
 	service := &Service{name, timeout, make(chan uint64, 1), false}
