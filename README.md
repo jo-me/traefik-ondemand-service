@@ -32,5 +32,7 @@ To simply run the server you can use `go run main.go`.
 To deploy this service in a container :
 
 ```
-$ docker run -v /var/run/docker.sock:/var/run/docker.sock acouvreur/traefik-ondemand-service:latest
+$ git clone https://github.com/jo-me/traefik-ondemand-service.git
+$ docker build --tag ondemand:1.0 ./traefik-ondemand-service
+$ docker run -v /var/run/docker.sock:/var/run/docker.sock ondemand:1.0
 ```
