@@ -9,11 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/docker/docker/api/types/swarm"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/opts"
 )
 
 const oneReplica = uint64(1)
@@ -144,13 +142,13 @@ func (service *Service) HandleServiceState(cli *client.Client) (string, error) {
 
 func (service *Service) getStatus(client *client.Client) (Status, error) {
 	ctx := context.Background()
-	dockerService, err := service.getDockerService(ctx, client)
+	dockerContainer, err := service.getDockerContainer(ctx, client)
 
 	if err != nil {
 		return "", err
 	}
 
-	if *dockerService.Spec.Mode.Replicated.Replicas == zeroReplica {
+	if dockerContainer.State != "running" {
 		return DOWN, nil
 	}
 	return UP, nil
@@ -159,7 +157,7 @@ func (service *Service) getStatus(client *client.Client) (Status, error) {
 func (service *Service) start(client *client.Client) {
 	fmt.Printf("Starting service %s\n", service.name)
 	service.isHandled = true
-	service.setServiceReplicas(client, 1)
+	service.startContainer(client)
 	go service.stopAfterTimeout(client)
 	service.time <- service.timeout
 }
@@ -176,55 +174,65 @@ func (service *Service) stopAfterTimeout(client *client.Client) {
 			}
 		default:
 			fmt.Printf("Stopping service %s\n", service.name)
-			service.setServiceReplicas(client, 0)
+			service.stopContainer(client)
 			return
 		}
 	}
 }
 
-func (service *Service) setServiceReplicas(client *client.Client, replicas uint64) error {
+func (service *Service) stopContainer(client *client.Client) error {
 	ctx := context.Background()
-	dockerService, err := service.getDockerService(ctx, client)
+	dockerContainer, err := service.getDockerContainer(ctx, client)
 	if err != nil {
 		return err
 	}
-	dockerService.Spec.Mode.Replicated = &swarm.ReplicatedService{
-		Replicas: getPointer(replicas),
-	}
-	client.ServiceUpdate(ctx, dockerService.ID, dockerService.Meta.Version, dockerService.Spec, types.ServiceUpdateOptions{})
+	
+	client.ContainerStop(ctx, dockerContainer.ID, nil)
 	return nil
 
 }
 
-func (service *Service) getDockerService(ctx context.Context, client *client.Client) (*swarm.Service, error) {
-	filterOPt := opts.NewFilterOpt()
-	listOpts := types.ServiceListOptions{
-		Filters: filterOPt.Value(),
-	}
-	services, err := client.ServiceList(ctx, listOpts)
-
+func (service *Service) startContainer(client *client.Client) error {
+	ctx := context.Background()
+	dockerContainer, err := service.getDockerContainer(ctx, client)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	
+	client.ContainerStart (ctx, dockerContainer.ID, types.ContainerStartOptions{})
+	return nil
 
-	dockerService, err := findService(services, service.name)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return dockerService, nil
 }
 
-func findService(services []swarm.Service, name string) (*swarm.Service, error) {
-	for _, service := range services {
-		if name == service.Spec.Name {
-			return &service, nil
+func (service *Service) getDockerContainer(ctx context.Context, client *client.Client) (*types.Container, error) {
+	containers, err := client.ContainerList(context.Background(),types.ContainerListOptions{
+		All:     true})
+
+	if err != nil {
+		return nil, err
+	}
+
+	/*
+	for _, container := range containers {
+		fmt.Printf("%s %s\n", container.Names[0], container.Image)
+	}
+	*/
+
+	dockerContainer, err := findContainerByName(containers, service.name)
+
+	if err != nil {
+		return nil, err
+	}
+
+
+	return dockerContainer, nil
+}
+
+func findContainerByName(containers []types.Container, name string) (*types.Container, error) {
+	for _, container := range containers {
+		if "/" + name == container.Names[0] {
+			return &container, nil
 		}
 	}
-	return &swarm.Service{}, fmt.Errorf("Could not find service %s", name)
-}
-
-func getPointer(x uint64) *uint64 {
-	return &x
+	return &types.Container{}, fmt.Errorf("Could not find service %s", name)
 }
