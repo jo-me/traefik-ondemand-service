@@ -2,8 +2,11 @@
 
 ## Description
 
-This is a service that can scale up or down a docker swarm service on demand.
-It basically starts a service when it's needed and then shut it down when it's no longer needed.
+This is a helper service for [acouvreur's OnDemand Traefik Plugin](https://github.com/acouvreur/traefik-ondemand-plugin) and a fork of the [original OnDemand helper service](https://github.com/acouvreur/traefik-ondemand-service) adapted to work with normal docker containers instead of docker swarm.
+
+The service provides one endpoint to request a certain container and set a timeout for how long that container should be running.
+If the container is not running it will be started. When the timeout expires the container will be stopped.
+
 
 ## Usage
 
@@ -32,5 +35,7 @@ To simply run the server you can use `go run main.go`.
 To deploy this service in a container :
 
 ```
-$ docker run -v /var/run/docker.sock:/var/run/docker.sock acouvreur/traefik-ondemand-service:latest
+$ git clone https://github.com/jo-me/traefik-ondemand-service.git
+$ docker build --tag ondemand:1.0 ./traefik-ondemand-service
+$ docker run -v /var/run/docker.sock:/var/run/docker.sock ondemand:1.0
 ```
